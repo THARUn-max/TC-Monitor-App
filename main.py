@@ -6,16 +6,17 @@ from datetime import datetime, timedelta
 import io
 
 # --- PAGE SETUP ---
-st.set_page_config(page_title="Varuna TC Testing", layout="wide")
-st.title("🚢 Varuna System: Variable 12-Cycle Monitor")
+st.set_page_config(page_title="Varuna TC Monitor", layout="wide")
+st.title("🚢 Varuna BBRx System: TC 12-Cycle Monitor")
 
 # --- DATA ENTRY SECTION ---
 st.sidebar.header("1. Baseline Setup")
 u_date = st.sidebar.date_input("Start Date", datetime(2026, 5, 15))
-u_time = st.sidebar.time_input("Start Time", datetime.strptime("21:40", "%H:%M").time())
+
+# This widget triggers the native mobile/browser interactive clock layout diagram
+u_time = st.sidebar.time_input("Select Start Time", datetime.strptime("21:40", "%H:%M").time())
 
 st.sidebar.header("2. Profile Configuration")
-# Allow user to choose the ramp rate and exact dwell duration parameters
 u_ramp = st.sidebar.number_input("Ramp Rate (°C/min)", value=1.0, min_value=0.1, step=0.1, format="%.1f")
 u_dwell_low = st.sidebar.number_input("Low Dwell Duration (minutes)", value=10, min_value=1, step=1)
 u_dwell_high = st.sidebar.number_input("High Dwell Duration (minutes)", value=10, min_value=1, step=1)
@@ -106,4 +107,6 @@ if generate_btn:
         mime="image/png"
     )
 else:
-    st.info("👋 Control Panel Ready. Define your custom timeline constraints in the sidebar and trigger generation.")
+    # Display current selection in 12-hour AM/PM format on the dashboard greeting
+    formatted_preview = u_time.strftime('%I:%M %p')
+    st.info(f"👋 System Ready. Current configuration targets a start at {formatted_preview}. Click 'Generate Profile Graph' to update.")
