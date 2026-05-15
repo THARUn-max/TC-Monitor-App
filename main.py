@@ -51,12 +51,16 @@ u_dwell_high = st.sidebar.number_input("High Dwell Duration (minutes)", value=10
 # Trigger button for generation
 generate_btn = st.sidebar.button("Generate Profile Graph", type="primary")
 
-# --- CALCULATOR ENGINE ---
+# --- CALCULATOR ENGINE WITH EXPANDED DWELL VISIBILITY ---
 def generate_custom_data(valid_time):
     start_dt = datetime.combine(u_date, valid_time)
     data = []
     curr_time, curr_temp = start_dt, 25.0
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start'})
+
+    # An initial small flat stabilization step helps make the Ambient point perfectly visible
+    curr_time += timedelta(minutes=10)
+    data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'AmbientStabilized'})
 
     for c in range(1, 13): 
         # 1. Ramp Down to -30°C
@@ -79,7 +83,12 @@ def generate_custom_data(valid_time):
 
     # Final Shutdown phase back to Ambient (25°C)
     curr_time += timedelta(minutes=abs(curr_temp - 25.0) / u_ramp)
-    data.append({'Time': curr_time, 'Temp': 25.0, 'Type': 'End'})
+    curr_temp = 25.0
+    data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'ShutdownStart'})
+    
+    # Flat hold at the end to make the final shutdown line easily visible
+    curr_time += timedelta(minutes=10)
+    data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'End'})
     return pd.DataFrame(data)
 
 # --- IMMEDIATE GRAPH GENERATION AND DISPLAY ---
@@ -114,26 +123,26 @@ if generate_btn:
         ts = row['Time'].strftime('%I:%M %p')
         
         if row['Type'] == 'Start':
-            ax.annotate(f"{ts}\n(Ambient)", (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(-12, 15), rotation=45, fontsize=10, color='#FFFFFF', fontweight='bold', ha='right', va='bottom')
+            ax.annotate(f"{ts}\nAMBIENT START", (row['Time'], row['Temp']), textcoords="offset points", 
+                        xytext=(-10, 15), rotation=45, fontsize=10, color='#00FFCC', fontweight='bold', ha='right', va='bottom')
                         
         elif row['Type'] == 'End':
-            ax.annotate(f"{ts}\n(Shutdown)", (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(12, 15), rotation=45, fontsize=10, color='#FFFFFF', fontweight='bold', ha='left', va='bottom')
+            ax.annotate(f"{ts}\nSHUTDOWN COMPLETE", (row['Time'], row['Temp']), textcoords="offset points", 
+                        xytext=(10, -25), rotation=45, fontsize=10, color='#00FFCC', fontweight='bold', ha='left', va='top')
                         
         elif row['Type'] == 'DwellStart':
-            if row['Temp'] < 0: # Low Dwell Start (-30°C) -> Shift tightly left and downward
+            if row['Temp'] < 0: # Low Dwell Start (-30°C)
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                             xytext=(-6, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
-            else: # High Dwell Start (55°C) -> Shift tightly left and upward
+            else: # High Dwell Start (55°C)
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                             xytext=(-6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='bottom')
                         
         elif row['Type'] == 'DwellEnd':
-            if row['Temp'] < 0: # Low Dwell End (-30°C) -> Shift tightly right and downward
+            if row['Temp'] < 0: # Low Dwell End (-30°C)
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                             xytext=(6, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='top')
-            else: # High Dwell End (55°C) -> Shift tightly right and upward
+            else: # High Dwell End (55°C)
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                             xytext=(6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='bottom')
 
@@ -142,10 +151,15 @@ if generate_btn:
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%I:%M %p'))
     ax.set_ylabel("Temperature (°C)", fontsize=12)
     
-    # Reference limits
+    # High-temperature tracking limit (55°C)
     ax.axhline(y=55, color='red', linestyle='--', alpha=0.4)
     ax.text(df['Time'].min(), 57, 'PEAK TEMPERATURE LIMIT (55°C)', color='red', fontsize=10, fontweight='bold')
     
+    # Ambient reference line (25°C)
+    ax.axhline(y=25, color='white', linestyle='--', alpha=0.25)
+    ax.text(df['Time'].min(), 27, 'AMBIENT BASELINE REFERENCE (25°C)', color='white', fontsize=10, fontweight='bold', alpha=0.6)
+    
+    # Low-temperature tracking limit (-30°C)
     ax.axhline(y=-30, color='cyan', linestyle='--', alpha=0.4)
     ax.text(df['Time'].min(), -34, 'MINIMUM TEMPERATURE LIMIT (-30°C)', color='cyan', fontsize=10, fontweight='bold')
     
