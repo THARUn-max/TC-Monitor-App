@@ -6,48 +6,57 @@ from datetime import datetime, timedelta
 import io
 
 # --- PAGE SETUP ---
-st.set_page_config(page_title="Industrial TC Monitor", layout="wide")
-st.title("🏗️ TC System: 12-Cycle Monitor")
+st.set_page_config(page_title="Varuna TC Testing", layout="wide")
+st.title("🚢 Varuna System: Variable 12-Cycle Monitor")
 
 # --- DATA ENTRY SECTION ---
-st.sidebar.header("Data Entry Section")
+st.sidebar.header("1. Baseline Setup")
 u_date = st.sidebar.date_input("Start Date", datetime(2026, 5, 15))
 u_time = st.sidebar.time_input("Start Time", datetime.strptime("21:40", "%H:%M").time())
-u_ramp = st.sidebar.number_input("Ramp Rate (°C/min)", value=1, min_value=1)
-u_dwell = st.sidebar.number_input("Dwell Time (min)", value=10, min_value=1)
+
+st.sidebar.header("2. Profile Configuration")
+# Allow user to choose the ramp rate and exact dwell duration parameters
+u_ramp = st.sidebar.number_input("Ramp Rate (°C/min)", value=1.0, min_value=0.1, step=0.1, format="%.1f")
+u_dwell_low = st.sidebar.number_input("Low Dwell Duration (minutes)", value=10, min_value=1, step=1)
+u_dwell_high = st.sidebar.number_input("High Dwell Duration (minutes)", value=10, min_value=1, step=1)
 
 # Trigger button for generation
-generate_btn = st.sidebar.button("Generate TC Graph", type="primary")
+generate_btn = st.sidebar.button("Generate Profile Graph", type="primary")
 
 # --- CALCULATOR ENGINE ---
-def generate_data():
+def generate_custom_data():
     start_dt = datetime.combine(u_date, u_time)
     data = []
     curr_time, curr_temp = start_dt, 25.0
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start'})
 
     for c in range(1, 13): # 12 Cycles
-        # Ramp Down to -30
+        # 1. Ramp Down to -30°C
         curr_time += timedelta(minutes=abs(curr_temp - (-30.0)) / u_ramp)
         curr_temp = -30.0
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart'})
-        curr_time += timedelta(minutes=u_dwell)
+        
+        # 2. Variable Low Dwell
+        curr_time += timedelta(minutes=u_dwell_low)
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd'})
         
-        # Ramp Up to 55
+        # 3. Ramp Up to 55°C
         curr_time += timedelta(minutes=abs(curr_temp - 55.0) / u_ramp)
         curr_temp = 55.0
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart'})
-        curr_time += timedelta(minutes=u_dwell)
+        
+        # 4. Variable High Dwell
+        curr_time += timedelta(minutes=u_dwell_high)
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd'})
 
-    curr_time += timedelta(minutes=abs(curr_temp - 25.0))
+    # Final Shutdown phase back to Ambient (25°C)
+    curr_time += timedelta(minutes=abs(curr_temp - 25.0) / u_ramp)
     data.append({'Time': curr_time, 'Temp': 25.0, 'Type': 'End'})
     return pd.DataFrame(data)
 
-# --- DISPLAY AND DISPLAY CONTROLS ---
+# --- GRAPH GENERATION & DISPLAY ---
 if generate_btn:
-    df = generate_data()
+    df = generate_custom_data()
     
     # Matplotlib Industrial Plotting
     plt.style.use('dark_background')
@@ -91,11 +100,10 @@ if generate_btn:
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
     
     st.download_button(
-        label="📥 Download Thermal Cycle Graph", 
+        label="📥 Download Tailored Profile Graph", 
         data=buf.getvalue(), 
-        file_name=f"TC_Report_{u_date}.png", 
+        file_name=f"Custom_TC_Report_{u_date}.png", 
         mime="image/png"
     )
 else:
-    st.info("👋 Welcome! Use the sidebar data entry section to enter your setup parameters, then click 'Generate TC Graph'.")
-
+    st.info("👋 Control Panel Ready. Define your custom timeline constraints in the sidebar and trigger generation.")
