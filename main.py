@@ -20,7 +20,7 @@ with col1:
     # Starts completely empty with "--" placeholder
     hour_choice = st.selectbox("Hour", ["--", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"], index=0)
 with col2:
-    minute_choices = ["--"] + [f"{i:02d}" for i in range(0, 60, 5)]
+    minute_choices = ["--"] + [f"{i:02d}" for i in range(0, 60, 1)]
     minute_choice = st.selectbox("Minute", minute_choices, index=0)
 with col3:
     period_choice = st.selectbox("AM/PM", ["--", "AM", "PM"], index=0)
