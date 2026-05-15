@@ -118,4 +118,4 @@ def main(page: ft.Page):
         graph_container
     )
 
-ft.app(target=main)
+ft.app(target=main) 
