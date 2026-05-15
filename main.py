@@ -6,26 +6,51 @@ from datetime import datetime, timedelta
 import io
 
 # --- PAGE SETUP ---
-st.set_page_config(page_title="VarunaTC Monitor", layout="wide")
+st.set_page_config(page_title="Varuna TC Monitor", layout="wide")
 st.title("🚢 Varuna System: Thermal Cycle Monitor")
+
+# --- FETCH PRESENT TIME FOR DEFAULT SELECTIONS ---
+now = datetime.now()
+current_hour = now.strftime("%I")       # 12-hour format string (e.g., "04")
+current_minute = now.strftime("%M")     # Minute string (e.g., "13")
+current_period = now.strftime("%p")     # "AM" or "PM"
 
 # --- DATA ENTRY SECTION ---
 st.sidebar.header("1. Baseline Setup")
-u_date = st.sidebar.date_input("Start Date", datetime.now().date())
+u_date = st.sidebar.date_input("Start Date", now.date())
 
 st.sidebar.subheader("Set Start Time")
-# side-by-side columns layout for Hour, Minute, and AM/PM
 col1, col2, col3 = st.sidebar.columns([2, 2, 2])
 
+# Hour configuration dropdown options list
+hour_list = [f"{i:02d}" for i in range(1, 13)]
+try:
+    default_hour_idx = hour_list.index(current_hour)
+except ValueError:
+    default_hour_idx = 0
+
 with col1:
-    # Starts completely empty with "--" placeholder
-    hour_choice = st.selectbox("Hour", ["--", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"], index=0)
+    hour_choice = st.selectbox("Hour", hour_list, index=default_hour_idx)
+
+# Minute configuration dropdown options list (00-59)
+minute_list = [f"{i:02d}" for i in range(0, 60, 1)]
+try:
+    default_minute_idx = minute_list.index(current_minute)
+except ValueError:
+    default_minute_idx = 0
+
 with col2:
-    # Steps by 1 so you can choose any exact minute from 00 to 59
-    minute_choices = ["--"] + [f"{i:02d}" for i in range(0, 60, 1)]
-    minute_choice = st.selectbox("Minute", minute_choices, index=0)
+    minute_choice = st.selectbox("Minute", minute_list, index=default_minute_idx)
+
+# AM/PM selection dropdown options list
+period_list = ["AM", "PM"]
+try:
+    default_period_idx = period_list.index(current_period)
+except ValueError:
+    default_period_idx = 0
+
 with col3:
-    period_choice = st.selectbox("AM/PM", ["--", "AM", "PM"], index=0)
+    period_choice = st.selectbox("AM/PM", period_list, index=default_period_idx)
 
 st.sidebar.header("2. Profile Configuration")
 u_ramp = st.sidebar.number_input("Ramp Rate (°C/min)", value=1.0, min_value=0.1, step=0.1, format="%.1f")
@@ -66,80 +91,87 @@ def generate_custom_data(valid_time):
     data.append({'Time': curr_time, 'Temp': 25.0, 'Type': 'End'})
     return pd.DataFrame(data)
 
-# --- USER INPUT ENFORCEMENT VALIDATION ---
-if generate_btn:
-    # Catch any missing selections upfront
-    if hour_choice == "--" or minute_choice == "--" or period_choice == "--":
-        st.error("⚠️ Data Entry Error: Please select a valid Hour, Minute, and AM/PM marker before generating the profile.")
-    else:
-        # Construct and parse valid 12-hour timestamp string
-        time_string = f"{hour_choice}:{minute_choice} {period_choice}"
-        u_time = datetime.strptime(time_string, "%I:%M %p").time()
-        
-        df = generate_custom_data(u_time)
-        
-        # Matplotlib Industrial Plotting Configuration
-        plt.style.use('dark_background')
-        fig, ax = plt.subplots(figsize=(24, 10))
-        
-        # Plot profile
-        ax.plot(df['Time'], df['Temp'], color='#00FFCC', linewidth=2, marker='o', markersize=4, alpha=0.8)
+# --- GRAPH GENERATION & DISPLAY ---
+if generate_btn or (hour_choice and minute_choice and period_choice):
+    # Construct and parse valid 12-hour timestamp string smoothly
+    time_string = f"{hour_choice}:{minute_choice} {period_choice}"
+    u_time = datetime.strptime(time_string, "%I:%M %p").time()
+    
+    df = generate_custom_data(u_time)
+    
+    # Matplotlib Industrial Plotting Configuration
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(24, 10))
+    
+    # Plot profile
+    ax.plot(df['Time'], df['Temp'], color='#00FFCC', linewidth=2, marker='o', markersize=4, alpha=0.8)
 
-        # Big Date Headers logic across midnight transitions
-        unique_days = df['Time'].dt.date.unique()
-        for day in unique_days:
-            day_data = df[df['Time'].dt.date == day]
-            center_time = day_data['Time'].iloc[len(day_data)//2]
-            ax.text(center_time, 72, day.strftime('%B %d, %Y'), 
-                    color='white', fontsize=14, fontweight='bold', ha='center',
-                    bbox=dict(facecolor='#333333', alpha=0.5, edgecolor='none', pad=6))
+    # Big Date Headers logic across midnight transitions
+    unique_days = df['Time'].dt.date.unique()
+    for day in unique_days:
+        day_data = df[df['Time'].dt.date == day]
+        center_time = day_data['Time'].iloc[len(day_data)//2]
+        ax.text(center_time, 72, day.strftime('%B %d, %Y'), 
+                color='white', fontsize=14, fontweight='bold', ha='center',
+                bbox=dict(facecolor='#333333', alpha=0.5, edgecolor='none', pad=6))
+        
+        # Line indicator for midnight boundary crossings
+        midnight = datetime.combine(day, datetime.min.time())
+        if midnight > df['Time'].min():
+            ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
+
+    # --- ADJUSTED LABELS LOGIC TO PREVENT OVERLAPPING ---
+    for i, row in df.iterrows():
+        # Do not draw intermediate tracking labels for absolute start/end points
+        if row['Type'] in ['Start', 'End']:
+            continue
             
-            # Line indicator for midnight boundary crossings
-            midnight = datetime.combine(day, datetime.min.time())
-            if midnight > df['Time'].min():
-                ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
-
-        # Left/Right 12-Hour Diagonal Timeline Marker Annotations
-        for i, row in df.iterrows():
-            ts = row['Time'].strftime('%I:%M %p')
-            x_off, ha = (-12, 'right') if row['Type'] == 'DwellStart' else (12, 'left')
-            ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(x_off, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha=ha)
-
-        # Explicit pointer labels pinning Initial Ambient vs Final Shutdown boundaries
-        ax.annotate('Ambient (25°C)', (df['Time'].iloc[0], 25.0), textcoords="offset points", 
-                    xytext=(-15, -25), color='#FFFFFF', fontweight='bold', arrowprops=dict(arrowstyle="->", color='white'))
+        ts = row['Time'].strftime('%I:%M %p')
         
-        ax.annotate('Shutdown (25°C)', (df['Time'].iloc[-1], 25.0), textcoords="offset points", 
-                    xytext=(15, -25), color='#FFFFFF', fontweight='bold', arrowprops=dict(arrowstyle="->", color='white'))
+        # Dynamically push DwellStart text leftward and DwellEnd text rightward
+        # This keeps them visually close to their node point but ensures they never clip each other
+        if row['Type'] == 'DwellStart':
+            x_off, ha = -6, 'right'
+            y_off = 10 if row['Temp'] > 0 else -16
+        else:
+            x_off, ha = 6, 'left'
+            y_off = 10 if row['Temp'] > 0 else -16
+            
+        ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
+                    xytext=(x_off, y_off), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha=ha)
 
-        # Graph Boundary Constraints & Label Mapping
-        ax.set_ylim(-45, 85)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%I:%M %p'))
-        ax.set_ylabel("Temperature (°C)", fontsize=12)
-        
-        # Peak Temperature Reference Line
-        ax.axhline(y=55, color='red', linestyle='--', alpha=0.4)
-        ax.text(df['Time'].min(), 57, 'PEAK TEMPERATURE LIMIT (55°C)', color='red', fontsize=10, fontweight='bold')
-        
-        # Minimum Temperature Reference Line
-        ax.axhline(y=-30, color='cyan', linestyle='--', alpha=0.4)
-        ax.text(df['Time'].min(), -34, 'MINIMUM TEMPERATURE LIMIT (-30°C)', color='cyan', fontsize=10, fontweight='bold')
-        
-        ax.grid(True, alpha=0.05)
+    # Explicit pointer labels pinning Initial Ambient vs Final Shutdown boundaries
+    ax.annotate('Ambient (25°C)', (df['Time'].iloc[0], 25.0), textcoords="offset points", 
+                xytext=(-20, 15), color='#FFFFFF', fontweight='bold', arrowprops=dict(arrowstyle="->", color='white'))
+    
+    ax.annotate('Shutdown (25°C)', (df['Time'].iloc[-1], 25.0), textcoords="offset points", 
+                xytext=(10, 15), color='#FFFFFF', fontweight='bold', arrowprops=dict(arrowstyle="->", color='white'))
 
-        # Display the completely built diagram
-        st.pyplot(fig)
+    # Graph Boundary Constraints & Label Mapping
+    ax.set_ylim(-45, 85)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%I:%M %p'))
+    ax.set_ylabel("Temperature (°C)", fontsize=12)
+    
+    # Peak Temperature Reference Line
+    ax.axhline(y=55, color='red', linestyle='--', alpha=0.4)
+    ax.text(df['Time'].min(), 57, 'PEAK TEMPERATURE LIMIT (55°C)', color='red', fontsize=10, fontweight='bold')
+    
+    # Minimum Temperature Reference Line
+    ax.axhline(y=-30, color='cyan', linestyle='--', alpha=0.4)
+    ax.text(df['Time'].min(), -34, 'MINIMUM TEMPERATURE LIMIT (-30°C)', color='cyan', fontsize=10, fontweight='bold')
+    
+    ax.grid(True, alpha=0.05)
 
-        # Handle binary image rendering block for file downloads
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-        
-        st.download_button(
-            label="📥 Download Profile Graph", 
-            data=buf.getvalue(), 
-            file_name=f"TC_Report_{u_date}.png", 
-            mime="image/png"
-        )
-else:
-    st.warning("⚠️ Waiting for user input. Please select your custom setup parameters and Start Time choices in the sidebar layout, then hit 'Generate Profile Graph'.")
+    # Display the built diagram
+    st.pyplot(fig)
+
+    # Handle file downloads
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+    
+    st.download_button(
+        label="📥 Download Profile Graph", 
+        data=buf.getvalue(), 
+        file_name=f"TC_Report_{u_date}.png", 
+        mime="image/png"
+    )
