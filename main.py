@@ -51,14 +51,14 @@ u_dwell_high = st.sidebar.number_input("High Dwell Duration (minutes)", value=10
 # Trigger button for generation
 generate_btn = st.sidebar.button("Generate Profile Graph", type="primary")
 
-# --- CALCULATOR ENGINE WITH EXPANDED DWELL VISIBILITY ---
+# --- CALCULATOR ENGINE ---
 def generate_custom_data(valid_time):
     start_dt = datetime.combine(u_date, valid_time)
     data = []
     curr_time, curr_temp = start_dt, 25.0
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start'})
 
-    # Stabilization step for ambient start visibility
+    # Stabilization hold for initial ambient point tracking
     curr_time += timedelta(minutes=10)
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'AmbientStabilized'})
 
@@ -105,8 +105,8 @@ if generate_btn:
     # Plot profile line
     ax.plot(df['Time'], df['Temp'], color='#00FFCC', linewidth=2, marker='o', markersize=4, alpha=0.8)
 
-    # UPDATED: Image Main Title Header
-    ax.set_title("🚢VARUNA TC CYCLE WAVEFORM", fontsize=18, fontweight='bold', color='white', pad=30)
+    # Core Waveform Identification Title
+    ax.set_title("VARUNA TC WAVEFORM", fontsize=18, fontweight='bold', color='white', pad=30)
 
     # Big Date Headers logic across midnight transitions
     unique_days = df['Time'].dt.date.unique()
@@ -121,35 +121,39 @@ if generate_btn:
         if midnight > df['Time'].min():
             ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
 
-    # --- ADJUSTED INFLECTION POINT TIMESTAMPS ---
+    # --- PHYSICAL SEQUENCE TIMESTAMPS OVERLAY (NON-OVERLAPPING) ---
     for i, row in df.iterrows():
         ts = row['Time'].strftime('%I:%M %p')
         
         if row['Type'] == 'Start':
-            # UPDATED: Brought closer to the initial node
+            # Ambient initial baseline label positioning
             ax.annotate(f"{ts}\nAMBIENT START", (row['Time'], row['Temp']), textcoords="offset points", 
                         xytext=(-6, 10), rotation=45, fontsize=10, color='#00FFCC', fontweight='bold', ha='right', va='bottom')
                         
         elif row['Type'] == 'End':
-            # UPDATED: Brought closer to the terminal node
+            # Terminal shutdown baseline label positioning
             ax.annotate(f"{ts}\nSHUTDOWN COMPLETE", (row['Time'], row['Temp']), textcoords="offset points", 
                         xytext=(6, -18), rotation=45, fontsize=10, color='#00FFCC', fontweight='bold', ha='left', va='top')
                         
         elif row['Type'] == 'DwellStart':
-            if row['Temp'] < 0: # Low Dwell Start (-30°C)
+            if row['Temp'] < 0: 
+                # Low Dwell Start (-30°C) -> Frames the LEFT edge of the valley floor
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                            xytext=(-12, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
-            else: # High Dwell Start (55°C) -> Shifting RIGHT into the plateau area
+                            xytext=(-8, -24), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
+            else: 
+                # High Dwell Start (55°C) -> Frames the LEFT edge of the peak plateau
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                            xytext=(6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='bottom')
+                            xytext=(-8, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='bottom')
                         
         elif row['Type'] == 'DwellEnd':
-            if row['Temp'] < 0: # Low Dwell End (-30°C) -> Shifting LEFT into the valley area
+            if row['Temp'] < 0: 
+                # Low Dwell End (-30°C) -> Frames the RIGHT edge of the valley floor
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                            xytext=(-6, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
-            else: # High Dwell End (55°C)
+                            xytext=(8, -24), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='top')
+            else: 
+                # High Dwell End (55°C) -> Frames the RIGHT edge of the peak plateau
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                            xytext=(6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='bottom')
+                            xytext=(8, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='bottom')
 
     # Graph Boundary Constraints & Label Mapping
     ax.set_ylim(-45, 85)
