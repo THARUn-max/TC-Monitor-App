@@ -109,24 +109,31 @@ if generate_btn:
         if midnight > df['Time'].min():
             ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
 
-    # --- DWELL END ONLY TIMESTAMPS ---
+    # --- UNIFIED 45-DEGREE TIMESTAMPS OVERLAY ---
     for i, row in df.iterrows():
-        # Only label points that represent the completion of a soak profile
-        if row['Type'] == 'DwellEnd':
-            ts = row['Time'].strftime('%I:%M %p')
-            
-            # Position text horizontally directly to the right of the end point
-            x_off, y_off = 10, 0
+        ts = row['Time'].strftime('%I:%M %p')
+        
+        if row['Type'] == 'Start':
+            # Initial Ambient timestamp annotation positioning
+            ax.annotate(f"{ts}\n(Ambient)", (row['Time'], row['Temp']), textcoords="offset points", 
+                        xytext=(-12, 15), rotation=45, fontsize=10, color='#FFFFFF', fontweight='bold', ha='right', va='bottom')
+                        
+        elif row['Type'] == 'End':
+            # Final Shutdown timestamp annotation positioning
+            ax.annotate(f"{ts}\n(Shutdown)", (row['Time'], row['Temp']), textcoords="offset points", 
+                        xytext=(12, 15), rotation=45, fontsize=10, color='#FFFFFF', fontweight='bold', ha='left', va='bottom')
+                        
+        elif row['Type'] == 'DwellStart':
+            # Dynamic alignment for Dwell Start points (shifts left)
+            y_offset = 12 if row['Temp'] > 0 else -24
             ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(x_off, y_off), rotation=0, fontsize=10, 
-                        color='#FFCC00', fontweight='bold', ha='left', va='center')
-
-    # Pointer labels pinning Initial Ambient vs Final Shutdown boundaries
-    ax.annotate('Ambient (25°C)', (df['Time'].iloc[0], 25.0), textcoords="offset points", 
-                xytext=(-20, 15), color='#FFFFFF', fontweight='bold', arrowprops=dict(arrowstyle="->", color='white'))
-    
-    ax.annotate('Shutdown (25°C)', (df['Time'].iloc[-1], 25.0), textcoords="offset points", 
-                xytext=(10, 15), color='#FFFFFF', fontweight='bold', arrowprops=dict(arrowstyle="->", color='white'))
+                        xytext=(-8, y_offset), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right')
+                        
+        elif row['Type'] == 'DwellEnd':
+            # Dynamic alignment for Dwell End points (shifts right)
+            y_offset = 12 if row['Temp'] > 0 else -24
+            ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
+                        xytext=(8, y_offset), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left')
 
     # Graph Boundary Constraints & Label Mapping
     ax.set_ylim(-45, 85)
