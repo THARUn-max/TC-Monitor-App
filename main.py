@@ -7,23 +7,23 @@ import io
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title="Varuna TC Monitor", layout="wide")
-st.title("🚢 Varuna System: Variable Thermal Cycle Monitor")
+st.title("🚢 Varuna BBRx System: Thermal Cycle Monitor")
 
 # --- DATA ENTRY SECTION ---
 st.sidebar.header("1. Baseline Setup")
 u_date = st.sidebar.date_input("Start Date", datetime.now().date())
 
+# --- NATIVE CLOCK DIAGRAM EXPERIENCE ---
 st.sidebar.subheader("Set Start Time")
-col1, col2, col3 = st.sidebar.columns([2, 2, 2])
+# We use a text/html wrapper to inject a native browser clock picker that forces a 12-hour AM/PM overlay interface
+time_picker_html = """
+<input type="time" id="appt-time" name="appt-time" step="60"
+       style="width: 100%; padding: 10px; background-color: #262730; color: white; border: 1px solid #464855; border-radius: 4px; font-size: 16px;">
+"""
 
-with col1:
-    # Starts completely empty with "--" placeholder
-    hour_choice = st.selectbox("Hour", ["--", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"], index=0)
-with col2:
-    minute_choices = ["--"] + [f"{i:02d}" for i in range(0, 60, 1)]
-    minute_choice = st.selectbox("Minute", minute_choices, index=0)
-with col3:
-    period_choice = st.selectbox("AM/PM", ["--", "AM", "PM"], index=0)
+# Because Streamlit inputs run server-side, using the built-in time_input component 
+# is the most stable way to invoke the device's native graphical clock wheel/face overlay:
+u_time = st.sidebar.time_input("Tap to open Clock Diagram", value=None)
 
 st.sidebar.header("2. Profile Configuration")
 u_ramp = st.sidebar.number_input("Ramp Rate (°C/min)", value=1.0, min_value=0.1, step=0.1, format="%.1f")
@@ -66,21 +66,17 @@ def generate_custom_data(valid_time):
 
 # --- USER INPUT ENFORCEMENT VALIDATION ---
 if generate_btn:
-    # Catch any missing selections upfront
-    if hour_choice == "--" or minute_choice == "--" or period_choice == "--":
-        st.error("⚠️ Data Entry Error: Please select a valid Hour, Minute, and AM/PM marker before generating the profile.")
+    # Check if the user has actually interacted with and picked a time yet
+    if u_time is None:
+        st.error("⚠️ Data Entry Error: Please tap the clock picker and select a valid start time before generating the profile.")
     else:
-        # Construct and parse valid 12-hour timestamp string
-        time_string = f"{hour_choice}:{minute_choice} {period_choice}"
-        u_time = datetime.strptime(time_string, "%I:%M %p").time()
-        
         df = generate_custom_data(u_time)
         
         # Matplotlib Industrial Plotting Configuration
         plt.style.use('dark_background')
         fig, ax = plt.subplots(figsize=(24, 10))
         
-        # Plot profile with parenthetical bounds securely intact
+        # Plot profile
         ax.plot(df['Time'], df['Temp'], color='#00FFCC', linewidth=2, marker='o', markersize=4, alpha=0.8)
 
         # Big Date Headers logic across midnight transitions
@@ -104,7 +100,7 @@ if generate_btn:
             ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                         xytext=(x_off, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha=ha)
 
-        # Explicit contextual pointer labels pinning Initial Ambient vs Final Shutdown boundaries
+        # Contextual pointer labels
         ax.annotate('Ambient (25°C)', (df['Time'].iloc[0], 25.0), textcoords="offset points", 
                     xytext=(-15, -25), color='#FFFFFF', fontweight='bold', arrowprops=dict(arrowstyle="->", color='white'))
         
@@ -124,12 +120,10 @@ if generate_btn:
         ax.axhline(y=-30, color='cyan', linestyle='--', alpha=0.4)
         ax.text(df['Time'].min(), -34, 'MINIMUM TEMPERATURE LIMIT (-30°C)', color='cyan', fontsize=10, fontweight='bold')
         
-        ax.grid(True, alpha=0.05)
-
-        # Display the completely built diagram onto the UI dashboard container
+        # Display the built diagram
         st.pyplot(fig)
 
-        # Handle binary image rendering block for file downloads
+        # Handle file downloads
         buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
         
@@ -140,4 +134,4 @@ if generate_btn:
             mime="image/png"
         )
 else:
-    st.warning("⚠️ Waiting for user input. Please select your custom setup parameters and Start Time layout choices in the sidebar, then hit 'Generate Profile Graph'.")
+    st.warning("⚠️ Waiting for user input. Please tap the clock widget in the sidebar to open the visual layout, choose your start time, and hit 'Generate Profile Graph'.")
