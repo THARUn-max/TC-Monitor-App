@@ -138,7 +138,7 @@ if generate_btn:
         elif row['Type'] == 'DwellStart':
             if row['Temp'] < 0: # Low Dwell Start (-30°C)
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                            xytext=(-8, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
+                            xytext=(-12, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
             else: # High Dwell Start (55°C) -> Shifting RIGHT into the plateau area
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                             xytext=(6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='bottom')
