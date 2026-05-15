@@ -7,14 +7,23 @@ import io
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title="Varuna TC Monitor", layout="wide")
-st.title("🚢 Varuna BBRx System: TC 12-Cycle Monitor")
+st.title("🚢 Varuna System: Thermal Cycle Monitor")
 
 # --- DATA ENTRY SECTION ---
 st.sidebar.header("1. Baseline Setup")
-u_date = st.sidebar.date_input("Start Date", datetime(2026, 5, 15))
+u_date = st.sidebar.date_input("Start Date", datetime.now().date())
 
-# This widget triggers the native mobile/browser interactive clock layout diagram
-u_time = st.sidebar.time_input("Select Start Time", datetime.strptime("21:40", "%H:%M").time())
+st.sidebar.subheader("Set Start Time")
+col1, col2, col3 = st.sidebar.columns([2, 2, 2])
+
+with col1:
+    # Use a blank placeholder item as index 0 to ensure it starts empty
+    hour_choice = st.selectbox("Hour", ["--", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"], index=0)
+with col2:
+    minute_choices = ["--"] + [f"{i:02d}" for i in range(0, 60, 5)]
+    minute_choice = st.selectbox("Minute", minute_choices, index=0)
+with col3:
+    period_choice = st.selectbox("AM/PM", ["--", "AM", "PM"], index=0)
 
 st.sidebar.header("2. Profile Configuration")
 u_ramp = st.sidebar.number_input("Ramp Rate (°C/min)", value=1.0, min_value=0.1, step=0.1, format="%.1f")
@@ -25,8 +34,8 @@ u_dwell_high = st.sidebar.number_input("High Dwell Duration (minutes)", value=10
 generate_btn = st.sidebar.button("Generate Profile Graph", type="primary")
 
 # --- CALCULATOR ENGINE ---
-def generate_custom_data():
-    start_dt = datetime.combine(u_date, u_time)
+def generate_custom_data(valid_time):
+    start_dt = datetime.combine(u_date, valid_time)
     data = []
     curr_time, curr_temp = start_dt, 25.0
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start'})
@@ -41,7 +50,7 @@ def generate_custom_data():
         curr_time += timedelta(minutes=u_dwell_low)
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd'})
         
-        # 3. Ramp Up to 55°C
+        # 3. Ramp Up to 55°C (Peak)
         curr_time += timedelta(minutes=abs(curr_temp - 55.0) / u_ramp)
         curr_temp = 55.0
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart'})
@@ -55,58 +64,20 @@ def generate_custom_data():
     data.append({'Time': curr_time, 'Temp': 25.0, 'Type': 'End'})
     return pd.DataFrame(data)
 
-# --- GRAPH GENERATION & DISPLAY ---
+# --- USER INPUT ENFORCEMENT VALIDATION ---
 if generate_btn:
-    df = generate_custom_data()
-    
-    # Matplotlib Industrial Plotting
-    plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(24, 10))
-    ax.plot(df['Time'], df['Temp'], color='#00FFCC', linewidth=2, marker='o', markersize=4, alpha=0.8)
-
-    # Big Date Headers logic
-    unique_days = df['Time'].dt.date.unique()
-    for day in unique_days:
-        day_data = df[df['Time'].dt.date == day]
-        center_time = day_data['Time'].iloc[len(day_data)//2]
-        ax.text(center_time, 70, day.strftime('%B %d, %Y'), 
-                color='white', fontsize=14, fontweight='bold', ha='center',
-                bbox=dict(facecolor='#333333', alpha=0.5, edgecolor='none', pad=6))
+    # Check if any of the time drop-downs are still unselected
+    if hour_choice == "--" or minute_choice == "--" or period_choice == "--":
+        st.error("⚠️ Data Entry Error: Please select a valid Hour, Minute, and AM/PM marker before generating the profile.")
+    else:
+        # If valid, clean and parse inputs
+        time_string = f"{hour_choice}:{minute_choice} {period_choice}"
+        u_time = datetime.strptime(time_string, "%I:%M %p").time()
         
-        # Line indicator for midnight change
-        midnight = datetime.combine(day, datetime.min.time())
-        if midnight > df['Time'].min():
-            ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
+        df = generate_custom_data(u_time)
+        
+        # Matplotlib Industrial Plotting
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots(figsize=(24, 10))
+        ax.plot(df['Time'], df
 
-    # Left/Right 12-Hour Diagonal Labels
-    for i, row in df.iterrows():
-        ts = row['Time'].strftime('%I:%M %p')
-        x_off, ha = (-12, 'right') if row['Type'] == 'DwellStart' else (12, 'left')
-        ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                    xytext=(x_off, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha=ha)
-
-    # Graph Bounds & Limits
-    ax.set_ylim(-45, 85)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%I:%M %p'))
-    ax.set_ylabel("Temperature (°C)", fontsize=12)
-    ax.axhline(y=55, color='red', linestyle='--', alpha=0.25)
-    ax.axhline(y=-30, color='cyan', linestyle='--', alpha=0.25)
-    ax.grid(True, alpha=0.05)
-
-    # Show chart on web screen
-    st.pyplot(fig)
-
-    # Buffer data handling to allow download
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-    
-    st.download_button(
-        label="📥 Download Tailored Profile Graph", 
-        data=buf.getvalue(), 
-        file_name=f"Custom_TC_Report_{u_date}.png", 
-        mime="image/png"
-    )
-else:
-    # Display current selection in 12-hour AM/PM format on the dashboard greeting
-    formatted_preview = u_time.strftime('%I:%M %p')
-    st.info(f"👋 System Ready. Current configuration targets a start at {formatted_preview}. Click 'Generate Profile Graph' to update.")
