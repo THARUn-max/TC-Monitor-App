@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 import io
 
 # --- PAGE SETUP ---
-st.set_page_config(page_title="Varuna TC Monitor", layout="wide")
-st.title("🚢 Varuna System: ThermalCycle Monitor")
+st.set_page_config(page_title="Industrial TC Monitor", layout="wide")
+st.title("🏗️ TC System: Variable 12-Cycle Monitor")
 
 # --- REAL PRESENT TIME FOR DEFAULTS ---
 now = datetime.now()
@@ -56,31 +56,30 @@ def generate_custom_data(valid_time):
     start_dt = datetime.combine(u_date, valid_time)
     data = []
     curr_time, curr_temp = start_dt, 25.0
-    # Tracking Slope for alignment logic
-    data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start', 'Slope': 'Flat'})
+    data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start'})
 
     for c in range(1, 13): 
         # 1. Ramp Down to -30°C
         curr_time += timedelta(minutes=abs(curr_temp - (-30.0)) / u_ramp)
         curr_temp = -30.0
-        data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart', 'Slope': 'Down'})
+        data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart'})
         
         # 2. Variable Low Dwell
         curr_time += timedelta(minutes=u_dwell_low)
-        data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd', 'Slope': 'Flat'})
+        data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd'})
         
         # 3. Ramp Up to 55°C (Peak)
         curr_time += timedelta(minutes=abs(curr_temp - 55.0) / u_ramp)
         curr_temp = 55.0
-        data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart', 'Slope': 'Up'})
+        data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart'})
         
         # 4. Variable High Dwell
         curr_time += timedelta(minutes=u_dwell_high)
-        data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd', 'Slope': 'Flat'})
+        data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd'})
 
     # Final Shutdown phase back to Ambient (25°C)
     curr_time += timedelta(minutes=abs(curr_temp - 25.0) / u_ramp)
-    data.append({'Time': curr_time, 'Temp': 25.0, 'Type': 'End', 'Slope': 'Down'})
+    data.append({'Time': curr_time, 'Temp': 25.0, 'Type': 'End'})
     return pd.DataFrame(data)
 
 # --- IMMEDIATE GRAPH GENERATION AND DISPLAY ---
@@ -110,29 +109,17 @@ if generate_btn:
         if midnight > df['Time'].min():
             ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
 
-    # --- WAVE SLOPE TIMESTAMPS ALIGNMENT ---
+    # --- DWELL END ONLY TIMESTAMPS ---
     for i, row in df.iterrows():
-        if row['Type'] in ['Start', 'End']:
-            continue
+        # Only label points that represent the completion of a soak profile
+        if row['Type'] == 'DwellEnd':
+            ts = row['Time'].strftime('%I:%M %p')
             
-        ts = row['Time'].strftime('%I:%M %p')
-        
-        # Align rotation and text direction parallel to the wave slope
-        if row['Slope'] == 'Down':       # Approaching a low dwell point (Ramping down)
-            rot = -45
-            x_off, y_off = -12, -15
-            ha = 'right'
-        elif row['Slope'] == 'Up':       # Approaching a high dwell point (Ramping up)
-            rot = 45
-            x_off, y_off = -12, 15
-            ha = 'right'
-        else:                            # Leaving a dwell point (Moving along a flat line)
-            rot = 0
-            x_off, y_off = 12, 0
-            ha = 'left'
-            
-        ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                    xytext=(x_off, y_off), rotation=rot, fontsize=9, color='#FFCC00', fontweight='bold', ha=ha)
+            # Position text horizontally directly to the right of the end point
+            x_off, y_off = 10, 0
+            ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
+                        xytext=(x_off, y_off), rotation=0, fontsize=10, 
+                        color='#FFCC00', fontweight='bold', ha='left', va='center')
 
     # Pointer labels pinning Initial Ambient vs Final Shutdown boundaries
     ax.annotate('Ambient (25°C)', (df['Time'].iloc[0], 25.0), textcoords="offset points", 
