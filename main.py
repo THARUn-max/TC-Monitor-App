@@ -1,121 +1,101 @@
-import flet as ft
+import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import io
-import base64
+
+# --- PAGE SETUP ---
+st.set_page_config(page_title="Industrial TC Monitor", layout="wide")
+st.title("🏗️ TC System: 12-Cycle Monitor")
+
+# --- DATA ENTRY SECTION ---
+st.sidebar.header("Data Entry Section")
+u_date = st.sidebar.date_input("Start Date", datetime(2026, 5, 15))
+u_time = st.sidebar.time_input("Start Time", datetime.strptime("21:40", "%H:%M").time())
+u_ramp = st.sidebar.number_input("Ramp Rate (°C/min)", value=1, min_value=1)
+u_dwell = st.sidebar.number_input("Dwell Time (min)", value=10, min_value=1)
+
+# Trigger button for generation
+generate_btn = st.sidebar.button("Generate TC Graph", type="primary")
 
 # --- CALCULATOR ENGINE ---
-def calculate_tc_data(start_date, start_time):
-    start_dt = datetime.combine(start_date, start_time)
+def generate_data():
+    start_dt = datetime.combine(u_date, u_time)
     data = []
     curr_time, curr_temp = start_dt, 25.0
-    
-    # Point 0
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start'})
 
-    for c in range(1, 13):
-        # 1. Ramp down to -30
-        curr_time += timedelta(minutes=abs(curr_temp - (-30.0)))
+    for c in range(1, 13): # 12 Cycles
+        # Ramp Down to -30
+        curr_time += timedelta(minutes=abs(curr_temp - (-30.0)) / u_ramp)
         curr_temp = -30.0
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart'})
-        # 2. Dwell Low (10m)
-        curr_time += timedelta(minutes=10)
+        curr_time += timedelta(minutes=u_dwell)
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd'})
-        # 3. Ramp up to 55
-        curr_time += timedelta(minutes=abs(curr_temp - 55.0))
+        
+        # Ramp Up to 55
+        curr_time += timedelta(minutes=abs(curr_temp - 55.0) / u_ramp)
         curr_temp = 55.0
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellStart'})
-        # 4. Dwell High (10m)
-        curr_time += timedelta(minutes=10)
+        curr_time += timedelta(minutes=u_dwell)
         data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'DwellEnd'})
 
-    # Shutdown
     curr_time += timedelta(minutes=abs(curr_temp - 25.0))
     data.append({'Time': curr_time, 'Temp': 25.0, 'Type': 'End'})
     return pd.DataFrame(data)
 
-# --- APP UI ---
-def main(page: ft.Page):
-    page.title = "TC System Monitor"
-    page.theme_mode = ft.ThemeMode.DARK
-    page.window_width = 450
-    page.padding = 20
+# --- DISPLAY AND DISPLAY CONTROLS ---
+if generate_btn:
+    df = generate_data()
+    
+    # Matplotlib Industrial Plotting
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(24, 10))
+    ax.plot(df['Time'], df['Temp'], color='#00FFCC', linewidth=2, marker='o', markersize=4, alpha=0.8)
 
-    # Local State
-    state = {"date": datetime.now().date(), "time": datetime.now().time()}
-
-    # UI Elements
-    title = ft.Text("INDUSTRIAL TC MONITOR", size=24, weight="bold", color="cyan")
-    status = ft.Text("Set Start Parameters", color="yellow")
-    graph_container = ft.Column(visible=False)
-
-    # Date/Time Selection Handlers
-    def handle_date(e):
-        state["date"] = e.control.value.date()
-        btn_date.text = f"Date: {state['date'].strftime('%d %b %Y')}"
-        page.update()
-
-    def handle_time(e):
-        state["time"] = e.control.value
-        btn_time.text = f"Time: {state['time'].strftime('%I:%M %p')}"
-        page.update()
-
-    d_picker = ft.DatePicker(on_change=handle_date)
-    t_picker = ft.TimePicker(on_change=handle_time)
-    page.overlay.extend([d_picker, t_picker])
-
-    btn_date = ft.OutlinedButton("Select Date", icon=ft.icons.CALENDAR_MONTH, on_click=lambda _: d_picker.pick_date())
-    btn_time = ft.OutlinedButton("Select Time", icon=ft.icons.ACCESS_TIME, on_click=lambda _: t_picker.pick_time())
-
-    def draw_graph(e):
-        df = calculate_tc_data(state["date"], state["time"])
-        plt.style.use('dark_background')
-        fig, ax = plt.subplots(figsize=(15, 8))
+    # Big Date Headers logic
+    unique_days = df['Time'].dt.date.unique()
+    for day in unique_days:
+        day_data = df[df['Time'].dt.date == day]
+        center_time = day_data['Time'].iloc[len(day_data)//2]
+        ax.text(center_time, 70, day.strftime('%B %d, %Y'), 
+                color='white', fontsize=14, fontweight='bold', ha='center',
+                bbox=dict(facecolor='#333333', alpha=0.5, edgecolor='none', pad=6))
         
-        # Plotting the Cyan line
-        ax.plot(df['Time'], df['Temp'], color='#00FFCC', linewidth=2, marker='o', markersize=3)
-        
-        # Horizontal Date Headers
-        for day in df['Time'].dt.date.unique():
-            day_data = df[df['Time'].dt.date == day]
-            ax.text(day_data['Time'].iloc[len(day_data)//2], 72, day.strftime('%B %d, %Y'), 
-                    ha='center', fontweight='bold', bbox=dict(facecolor='#333333', alpha=0.5))
+        # Line indicator for midnight change
+        midnight = datetime.combine(day, datetime.min.time())
+        if midnight > df['Time'].min():
+            ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
 
-        # Diagonal 12hr Labels
-        for i, row in df.iterrows():
-            ts = row['Time'].strftime('%I:%M %p')
-            x_off, ha = (-12, 'right') if row['Type'] == 'DwellStart' else (12, 'left')
-            ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(x_off, 12), rotation=45, fontsize=8, color='#FFCC00', fontweight='bold', ha=ha)
+    # Left/Right 12-Hour Diagonal Labels
+    for i, row in df.iterrows():
+        ts = row['Time'].strftime('%I:%M %p')
+        x_off, ha = (-12, 'right') if row['Type'] == 'DwellStart' else (12, 'left')
+        ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
+                    xytext=(x_off, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha=ha)
 
-        ax.set_ylim(-45, 85)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%I:%M %p'))
-        ax.axhline(y=55, color='red', linestyle='--', alpha=0.3)
-        ax.axhline(y=-30, color='cyan', linestyle='--', alpha=0.3)
-        
-        # Convert to Image for Flet
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-        buf.seek(0)
-        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        
-        graph_container.controls = [ft.Image(src_base64=img_base64, border_radius=10)]
-        graph_container.visible = True
-        status.value = "Profile Generated"
-        page.update()
+    # Graph Bounds & Limits
+    ax.set_ylim(-45, 85)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%I:%M %p'))
+    ax.set_ylabel("Temperature (°C)", fontsize=12)
+    ax.axhline(y=55, color='red', linestyle='--', alpha=0.25)
+    ax.axhline(y=-30, color='cyan', linestyle='--', alpha=0.25)
+    ax.grid(True, alpha=0.05)
 
-    btn_gen = ft.ElevatedButton("GENERATE GRAPH", on_click=draw_graph, bgcolor="cyan", color="black")
+    # Show chart on web screen
+    st.pyplot(fig)
 
-    page.add(
-        title,
-        status,
-        ft.Row([btn_date, btn_time], alignment=ft.MainAxisAlignment.CENTER),
-        ft.Divider(),
-        ft.Center(btn_gen),
-        ft.Divider(),
-        graph_container
+    # Buffer data handling to allow download
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+    
+    st.download_button(
+        label="📥 Download Thermal Cycle Graph", 
+        data=buf.getvalue(), 
+        file_name=f"TC_Report_{u_date}.png", 
+        mime="image/png"
     )
+else:
+    st.info("👋 Welcome! Use the sidebar data entry section to enter your setup parameters, then click 'Generate TC Graph'.")
 
-ft.app(target=main) 
