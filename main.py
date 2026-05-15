@@ -9,56 +9,65 @@ import io
 st.set_page_config(page_title="Varuna TC Monitor", layout="wide")
 st.title("🚢 Varuna System: Thermal Cycle Monitor")
 
-# --- FETCH PRESENT TIME FOR DEFAULT SELECTIONS ---
+# --- REAL PRESENT TIME FALLBACK LOGIC ---
+# Dynamically pulls the live system clock parameters on initialization
 now = datetime.now()
-current_hour = now.strftime("%I")       # 12-hour format string (e.g., "04")
-current_minute = now.strftime("%M")     # Minute string (e.g., "13")
-current_period = now.strftime("%p")     # "AM" or "PM"
+current_hour = now.strftime("%I")       
+current_minute = now.strftime("%M")     
+current_period = now.strftime("%p")     
 
-# --- DATA ENTRY SECTION ---
-st.sidebar.header("1. Baseline Setup")
-u_date = st.sidebar.date_input("Start Date", now.date())
+# Track if the graph has been generated to control sidebar visibility
+if "generated" not in st.session_state:
+    st.session_state.generated = False
 
-st.sidebar.subheader("Set Start Time")
-col1, col2, col3 = st.sidebar.columns([2, 2, 2])
+# --- DYNAMIC DATA ENTRY CONTAINER ---
+# If the graph is generated, the sidebar inputs fold into a closed layout to clear screen space
+with st.sidebar:
+    if st.session_state.generated:
+        input_container = st.expander("⚙️ Adjust Profile Parameters", expanded=False)
+    else:
+        input_container = st.container()
 
-# Hour configuration dropdown options list
-hour_list = [f"{i:02d}" for i in range(1, 13)]
-try:
-    default_hour_idx = hour_list.index(current_hour)
-except ValueError:
-    default_hour_idx = 0
+with input_container:
+    st.header("1. Baseline Setup")
+    u_date = st.date_input("Start Date", now.date())
 
-with col1:
-    hour_choice = st.selectbox("Hour", hour_list, index=default_hour_idx)
+    st.subheader("Set Start Time")
+    col1, col2, col3 = st.columns([2, 2, 2])
 
-# Minute configuration dropdown options list (00-59)
-minute_list = [f"{i:02d}" for i in range(0, 60, 1)]
-try:
-    default_minute_idx = minute_list.index(current_minute)
-except ValueError:
-    default_minute_idx = 0
+    hour_list = [f"{i:02d}" for i in range(1, 13)]
+    try:
+        default_hour_idx = hour_list.index(current_hour)
+    except ValueError:
+        default_hour_idx = 0
 
-with col2:
-    minute_choice = st.selectbox("Minute", minute_list, index=default_minute_idx)
+    with col1:
+        hour_choice = st.selectbox("Hour", hour_list, index=default_hour_idx)
 
-# AM/PM selection dropdown options list
-period_list = ["AM", "PM"]
-try:
-    default_period_idx = period_list.index(current_period)
-except ValueError:
-    default_period_idx = 0
+    minute_list = [f"{i:02d}" for i in range(0, 60, 1)]
+    try:
+        default_minute_idx = minute_list.index(current_minute)
+    except ValueError:
+        default_minute_idx = 0
 
-with col3:
-    period_choice = st.selectbox("AM/PM", period_list, index=default_period_idx)
+    with col2:
+        minute_choice = st.selectbox("Minute", minute_list, index=default_minute_idx)
 
-st.sidebar.header("2. Profile Configuration")
-u_ramp = st.sidebar.number_input("Ramp Rate (°C/min)", value=1.0, min_value=0.1, step=0.1, format="%.1f")
-u_dwell_low = st.sidebar.number_input("Low Dwell Duration (minutes)", value=10, min_value=1, step=1)
-u_dwell_high = st.sidebar.number_input("High Dwell Duration (minutes)", value=10, min_value=1, step=1)
+    period_list = ["AM", "PM"]
+    try:
+        default_period_idx = period_list.index(current_period)
+    except ValueError:
+        default_period_idx = 0
 
-# Trigger button for generation
-generate_btn = st.sidebar.button("Generate Profile Graph", type="primary")
+    with col3:
+        period_choice = st.selectbox("AM/PM", period_list, index=default_period_idx)
+
+    st.header("2. Profile Configuration")
+    u_ramp = st.number_input("Ramp Rate (°C/min)", value=1.0, min_value=0.1, step=0.1, format="%.1f")
+    u_dwell_low = st.number_input("Low Dwell Duration (minutes)", value=10, min_value=1, step=1)
+    u_dwell_high = st.number_input("High Dwell Duration (minutes)", value=10, min_value=1, step=1)
+
+    generate_btn = st.button("Generate Profile Graph", type="primary")
 
 # --- CALCULATOR ENGINE ---
 def generate_custom_data(valid_time):
@@ -67,7 +76,7 @@ def generate_custom_data(valid_time):
     curr_time, curr_temp = start_dt, 25.0
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start'})
 
-    for c in range(1, 13): # 12 Cycles
+    for c in range(1, 13): 
         # 1. Ramp Down to -30°C
         curr_time += timedelta(minutes=abs(curr_temp - (-30.0)) / u_ramp)
         curr_temp = -30.0
@@ -91,9 +100,12 @@ def generate_custom_data(valid_time):
     data.append({'Time': curr_time, 'Temp': 25.0, 'Type': 'End'})
     return pd.DataFrame(data)
 
-# --- GRAPH GENERATION & DISPLAY ---
-if generate_btn or (hour_choice and minute_choice and period_choice):
-    # Construct and parse valid 12-hour timestamp string smoothly
+# --- GRAPH RENDER MANAGEMENT ---
+if generate_btn:
+    st.session_state.generated = True
+    st.rerun()
+
+if st.session_state.generated:
     time_string = f"{hour_choice}:{minute_choice} {period_choice}"
     u_time = datetime.strptime(time_string, "%I:%M %p").time()
     
@@ -115,27 +127,25 @@ if generate_btn or (hour_choice and minute_choice and period_choice):
                 color='white', fontsize=14, fontweight='bold', ha='center',
                 bbox=dict(facecolor='#333333', alpha=0.5, edgecolor='none', pad=6))
         
-        # Line indicator for midnight boundary crossings
         midnight = datetime.combine(day, datetime.min.time())
         if midnight > df['Time'].min():
             ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
 
-    # --- ADJUSTED LABELS LOGIC TO PREVENT OVERLAPPING ---
+    # --- ADJUSTED LABELS LOGIC WITH ENHANCED SPACING ---
     for i, row in df.iterrows():
-        # Do not draw intermediate tracking labels for absolute start/end points
         if row['Type'] in ['Start', 'End']:
             continue
             
         ts = row['Time'].strftime('%I:%M %p')
         
-        # Dynamically push DwellStart text leftward and DwellEnd text rightward
-        # This keeps them visually close to their node point but ensures they never clip each other
+        # Shift DwellStart markers rightward/downward toward the flat line segment
         if row['Type'] == 'DwellStart':
-            x_off, ha = -6, 'right'
-            y_off = 10 if row['Temp'] > 0 else -16
+            x_off, ha = 8, 'left'
+            y_off = -15 if row['Temp'] > 0 else 8
         else:
+            # Shift DwellEnd markers slightly rightward and out of the way
             x_off, ha = 6, 'left'
-            y_off = 10 if row['Temp'] > 0 else -16
+            y_off = 12 if row['Temp'] > 0 else -18
             
         ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                     xytext=(x_off, y_off), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha=ha)
@@ -152,17 +162,16 @@ if generate_btn or (hour_choice and minute_choice and period_choice):
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%I:%M %p'))
     ax.set_ylabel("Temperature (°C)", fontsize=12)
     
-    # Peak Temperature Reference Line
+    # Reference limits
     ax.axhline(y=55, color='red', linestyle='--', alpha=0.4)
     ax.text(df['Time'].min(), 57, 'PEAK TEMPERATURE LIMIT (55°C)', color='red', fontsize=10, fontweight='bold')
     
-    # Minimum Temperature Reference Line
     ax.axhline(y=-30, color='cyan', linestyle='--', alpha=0.4)
     ax.text(df['Time'].min(), -34, 'MINIMUM TEMPERATURE LIMIT (-30°C)', color='cyan', fontsize=10, fontweight='bold')
     
     ax.grid(True, alpha=0.05)
 
-    # Display the built diagram
+    # Show chart on web screen
     st.pyplot(fig)
 
     # Handle file downloads
@@ -175,3 +184,5 @@ if generate_btn or (hour_choice and minute_choice and period_choice):
         file_name=f"TC_Report_{u_date}.png", 
         mime="image/png"
     )
+else:
+    st.warning("👋 Control Panel Ready. Verify parameters match your test conditions, then hit 'Generate Profile Graph'.")
