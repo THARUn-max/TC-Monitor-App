@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 import io
 
 # --- PAGE SETUP ---
-st.set_page_config(page_title="Industrial TC Monitor", layout="wide")
-st.title("🏗️ TC System: Variable 12-Cycle Monitor")
+st.set_page_config(page_title="Varuna TC Monitor", layout="wide")
+st.title("🚢 Varuna System: Thermal Cycle Monitor")
 
 # --- REAL PRESENT TIME FOR DEFAULTS ---
 now = datetime.now()
@@ -58,7 +58,7 @@ def generate_custom_data(valid_time):
     curr_time, curr_temp = start_dt, 25.0
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'Start'})
 
-    # An initial small flat stabilization step helps make the Ambient point perfectly visible
+    # Stabilization step for ambient start visibility
     curr_time += timedelta(minutes=10)
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'AmbientStabilized'})
 
@@ -86,7 +86,7 @@ def generate_custom_data(valid_time):
     curr_temp = 25.0
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'ShutdownStart'})
     
-    # Flat hold at the end to make the final shutdown line easily visible
+    # Flat hold for final shutdown visibility
     curr_time += timedelta(minutes=10)
     data.append({'Time': curr_time, 'Temp': curr_temp, 'Type': 'End'})
     return pd.DataFrame(data)
@@ -105,6 +105,9 @@ if generate_btn:
     # Plot profile line
     ax.plot(df['Time'], df['Temp'], color='#00FFCC', linewidth=2, marker='o', markersize=4, alpha=0.8)
 
+    # UPDATED: Image Main Title Header
+    ax.set_title("🚢VARUNA TC CYCLE WAVEFORM", fontsize=18, fontweight='bold', color='white', pad=30)
+
     # Big Date Headers logic across midnight transitions
     unique_days = df['Time'].dt.date.unique()
     for day in unique_days:
@@ -118,30 +121,32 @@ if generate_btn:
         if midnight > df['Time'].min():
             ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
 
-    # --- LOCALIZED 45-DEGREE TIMESTAMPS OVERLAY ---
+    # --- ADJUSTED INFLECTION POINT TIMESTAMPS ---
     for i, row in df.iterrows():
         ts = row['Time'].strftime('%I:%M %p')
         
         if row['Type'] == 'Start':
+            # UPDATED: Brought closer to the initial node
             ax.annotate(f"{ts}\nAMBIENT START", (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(-10, 15), rotation=45, fontsize=10, color='#00FFCC', fontweight='bold', ha='right', va='bottom')
+                        xytext=(-6, 10), rotation=45, fontsize=10, color='#00FFCC', fontweight='bold', ha='right', va='bottom')
                         
         elif row['Type'] == 'End':
+            # UPDATED: Brought closer to the terminal node
             ax.annotate(f"{ts}\nSHUTDOWN COMPLETE", (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(10, -25), rotation=45, fontsize=10, color='#00FFCC', fontweight='bold', ha='left', va='top')
+                        xytext=(6, -18), rotation=45, fontsize=10, color='#00FFCC', fontweight='bold', ha='left', va='top')
                         
         elif row['Type'] == 'DwellStart':
             if row['Temp'] < 0: # Low Dwell Start (-30°C)
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                             xytext=(-6, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
-            else: # High Dwell Start (55°C)
+            else: # High Dwell Start (55°C) -> Shifting RIGHT into the plateau area
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                            xytext=(-6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='bottom')
+                            xytext=(6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='bottom')
                         
         elif row['Type'] == 'DwellEnd':
-            if row['Temp'] < 0: # Low Dwell End (-30°C)
+            if row['Temp'] < 0: # Low Dwell End (-30°C) -> Shifting LEFT into the valley area
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                            xytext=(6, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='top')
+                            xytext=(-6, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
             else: # High Dwell End (55°C)
                 ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
                             xytext=(6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='bottom')
