@@ -109,31 +109,33 @@ if generate_btn:
         if midnight > df['Time'].min():
             ax.axvline(x=midnight, color='white', linestyle=':', alpha=0.3)
 
-    # --- UNIFIED 45-DEGREE TIMESTAMPS OVERLAY ---
+    # --- LOCALIZED 45-DEGREE TIMESTAMPS OVERLAY ---
     for i, row in df.iterrows():
         ts = row['Time'].strftime('%I:%M %p')
         
         if row['Type'] == 'Start':
-            # Initial Ambient timestamp annotation positioning
             ax.annotate(f"{ts}\n(Ambient)", (row['Time'], row['Temp']), textcoords="offset points", 
                         xytext=(-12, 15), rotation=45, fontsize=10, color='#FFFFFF', fontweight='bold', ha='right', va='bottom')
                         
         elif row['Type'] == 'End':
-            # Final Shutdown timestamp annotation positioning
             ax.annotate(f"{ts}\n(Shutdown)", (row['Time'], row['Temp']), textcoords="offset points", 
                         xytext=(12, 15), rotation=45, fontsize=10, color='#FFFFFF', fontweight='bold', ha='left', va='bottom')
                         
         elif row['Type'] == 'DwellStart':
-            # Dynamic alignment for Dwell Start points (shifts left)
-            y_offset = 12 if row['Temp'] > 0 else -24
-            ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(-8, y_offset), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right')
+            if row['Temp'] < 0: # Low Dwell Start (-30°C) -> Shift tightly left and downward
+                ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
+                            xytext=(-6, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='top')
+            else: # High Dwell Start (55°C) -> Shift tightly left and upward
+                ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
+                            xytext=(-6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='right', va='bottom')
                         
         elif row['Type'] == 'DwellEnd':
-            # Dynamic alignment for Dwell End points (shifts right)
-            y_offset = 12 if row['Temp'] > 0 else -24
-            ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
-                        xytext=(8, y_offset), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left')
+            if row['Temp'] < 0: # Low Dwell End (-30°C) -> Shift tightly right and downward
+                ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
+                            xytext=(6, -22), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='top')
+            else: # High Dwell End (55°C) -> Shift tightly right and upward
+                ax.annotate(ts, (row['Time'], row['Temp']), textcoords="offset points", 
+                            xytext=(6, 12), rotation=45, fontsize=9, color='#FFCC00', fontweight='bold', ha='left', va='bottom')
 
     # Graph Boundary Constraints & Label Mapping
     ax.set_ylim(-45, 85)
